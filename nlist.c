@@ -4,141 +4,213 @@
 
 #include <stdio.h>
 
-struct nlist_struct* new_nlist(enum nlist_type type)
+nlist_t new_nlist(enum nlist_type type, nlist_checker_t check,
+                  nlist_compare_t compare, nlist_cleanup_t clean)
 {
-  struct nlist_struct * list;
-  list = malloc(sizeof(struct nlist_struct));
-  list->node = NULL;
-  list->type = type;
-
-  return list;
+    nlist_t list;
+    if (!clean) // must have a clean function
+        return NULL;
+    list = malloc(sizeof(*list));
+    if (!list)
+        return NULL;
+    list->head = NULL;
+    list->type = type;
+    list->check = check;
+    list->compare = compare;
+    list->clean = clean;
+    return list;
 }
 
-void add_data_nlist(struct nlist_struct *nlist, void *data)
+void add_nlist(nlist_t nlist, void *data)
 {
-  struct nlist_node_struct *item = malloc(sizeof(struct nlist_node_struct));
-
-  if(nlist->node == NULL) /* If the list is empty */
-    {
-      item->data = data;
-      item->prev = NULL;
-      item->next = NULL;
-      nlist->node = item;
-      return;
+    nlist_node_t *item = malloc(sizeof(nlist_node_t));
+    if(nlist->head == NULL) {
+        item->data = data;
+        item->prev = NULL;
+        item->next = NULL;
+        nlist->head = item;
+        return;
     }
 
-  switch(nlist->type){
-  case LIST:                    /* will treat list by default as stack */
-  case STACK:
+    switch(nlist->type) {
+    case NLIST_LIST:                    /* treat list by default as stack */
+    case NLIST_STACK:
+        item->data = data;
+        item->next = nlist->head;
+        item->prev = NULL;
+        nlist->head->prev = item;
+        nlist->head = item;
+        break;
+
+    case NLIST_QUEUE:                   /* not yet implemented */
+        break;
+    }
+
+}
+
+void __remove_node(nlist_t nlist, nlist_node_t *node)
+{
+    if (node->prev) {
+        node->prev->next = node->next;
+    } else {
+        nlist->head = node->next;
+        nlist->head->prev = NULL;
+    }
+    if (node->next)
+        node->next->prev = node->prev;
+
+    nlist->clean(node->data);
+    free((void *) node);
+}
+
+
+nlist_err_t remove_nlist(nlist_t nlist, void *value)
+{
+    nlist_node_t *current = nlist->head;
+    while(current != NULL) {
+        if(nlist->check(current->data, value) == NLIST_TRUE) {
+            __remove_node(nlist, current);
+            return NLIST_TRUE;
+        }
+        current = current->next;
+    }
+    return NLIST_FALSE;
+}
+
+void remove_node_nlist(nlist_t nlist, nlist_node_t *node)
+{
+    __remove_node(nlist, node);
+}
+
+void * search_nlist(nlist_t nlist, void *value)
+{
+    nlist_node_t *cur = nlist->head;
+    while(cur != NULL) {
+        if(nlist->check(cur->data, value) == NLIST_TRUE) {
+            return cur->data;
+        }
+        cur = cur->next;
+    }
+    return NULL;
+}
+
+nlist_err_t is_empty_nlist(nlist_t nlist)
+{
+    if(nlist == NULL) /* to differentiate between empty and not initialized list */
+        return NLIST_NOTINIT;
+    else if (nlist->head == NULL)
+        return NLIST_TRUE;
+    return NLIST_FALSE;
+}
+
+void *pop_nlist(nlist_t nlist)
+{
+    if(nlist->head == NULL)
+        return NULL;
+
+    nlist_node_t *tmp;
+    void *data;
+    data = nlist->head->data;
+    tmp = nlist->head;
+    nlist->head = nlist->head->next;
+
+    if(nlist->head)
+        nlist->head->prev = NULL;
+
+    free(tmp);
+    return data;
+}
+
+void *peak_nlist(nlist_t nlist)
+{
+    if(nlist->head == NULL)
+        return NULL;
+    return nlist->head->data;
+}
+
+size_t get_count_nlist(nlist_t nlist)
+{
+    nlist_node_t *current = nlist->head;
+    size_t count = 0;
+    while(current != NULL) {
+        current = current->next;
+        count++;
+    }
+    return count;
+}
+
+void free_nlist(nlist_t nlist)
+{
+    nlist_node_t *current, *tmp;
+    if (!nlist)
+        return;
+    current = nlist->head;
+    while(current != NULL) {
+        tmp = current;
+        current = current->next;
+        nlist->clean(tmp->data);
+        free((void *) tmp);
+    }
+    free(nlist);
+}
+
+/* Sort functions */
+
+void __insert_sorted_nlist(nlist_t nlist, nlist_node_t *node)
+{
+    nlist_node_t *cur;
+
+    cur = nlist->head;
+    if (!nlist->head) { // nlist is empty
+        nlist->head = node;
+    }
+    while (cur != NULL) {
+        if (nlist->compare(cur->data, node->data) == NLIST_TRUE) {
+            node->next = cur;
+            node->prev = cur->prev;
+            if (cur->prev) // if we are in the middle
+                cur->prev->next = node;
+            else // this is the head
+                nlist->head = node;
+            cur->prev = node;
+            return;
+        }
+        node->prev = cur; // keep updating prev
+        cur = cur->next;
+    }
+    // this is the largest number
+    node->prev->next = node;
+    node->next = NULL;
+}
+
+
+void sort_nlist(nlist_t nlist)
+{
+    nlist_node_t *cur, *next;
+    if (!nlist || !nlist->head)
+        return;
+    cur = nlist->head;
+    while (cur) {
+        next = cur->next;
+        if (cur->next)
+            cur->next->prev = cur->prev;
+        if (cur->prev)
+            cur->prev->next = cur->next;
+        else // the head
+            nlist->head = cur->next;
+        __insert_sorted_nlist(nlist, cur);
+        cur = next;
+    }
+}
+
+void add_sorted_nlist(nlist_t nlist, void *data)
+{
+    nlist_node_t *item = malloc(sizeof(nlist_node_t));
     item->data = data;
-    item->next = nlist->node;
     item->prev = NULL;
-    nlist->node->prev =item;
-    nlist->node = item;
-    break;
-
-  case QUEUE:                   /* not yet implemented */
-    break;
-  }
-
-}
-
-int remove_data_nlist(struct nlist_struct *nlist, int (*remove_check) (void *data))
-{
-  struct nlist_node_struct *current = nlist->node, *tmp;
-  while(current != NULL)
-    {
-      if(remove_check(current->data))
-        {
-          if(current->prev == NULL) // first element
-            {
-              nlist->node = current->next;
-              nlist->node->prev = NULL;
-              free(current->data);
-              free(current);
-              return 1;
-            }
-          tmp = current;
-          current->prev->next = current->next;
-          current->next->prev = current->prev;
-          free(tmp->data);
-          free((void *) tmp);
-          return 1;
-        }
-      current = current->next;
-    }
-  return 0;
-}
-
-void * search_data_nlist(struct nlist_struct *nlist, int (*search_check) (void *data))
-{
-  struct nlist_node_struct *current = nlist->node;
-  while(current != NULL)
-    {
-      if(search_check(current->data))
-        {
-          return current->data;
-        }
-      current = current->next;
-    }
-  return 0;
-}
-
-int is_empty_nlist(struct nlist_struct *nlist)
-{
-  if(nlist == NULL) /* to differentiate between empty and not initialized list */
-    return -1;
-  else if (nlist->node == NULL)
-    return 1;
-  return 0;
-}
-
-void * pop_data_nlist(struct nlist_struct *nlist)
-{
-  if(nlist->node == NULL)
-    return NULL;
-
-  struct nlist_node_struct *tmp;
-  void *data;
-  data = nlist->node->data;
-  tmp = nlist->node;
-  nlist->node = nlist->node->next;
-
-  if(nlist->node)               /* If not null */
-    nlist->node->prev = NULL;
-
-  free(tmp);
-  return data;
-}
-
-void * peak_data_nlist(struct nlist_struct *nlist)
-{
-  if(nlist->node == NULL)
-    return NULL;
-  return nlist->node->data;
-}
-
-int get_count_nlist(struct nlist_struct *nlist)
-{
-  struct nlist_node_struct *current = nlist->node;
-  int count = 0;
-  while(current != NULL)
-    {
-      current = current->next;
-      count++;
-    }
-  return count;
-}
-
-void free_nlist(struct nlist_struct *nlist)
-{
-  struct nlist_node_struct *current = nlist->node, *tmp;
-  while(current != NULL)
-    {
-      tmp = current;
-      current = current->next;
-      free(tmp->data);
-      free((void *) tmp);
-    }
-  free(nlist);
+    item->next = NULL;
+    if (!nlist->head) // if empty just insert it
+        nlist->head = item;
+    else
+        __insert_sorted_nlist(nlist, item);
 }
