@@ -7,8 +7,9 @@ struct xy {
     int x;
 };
 
-create_checker_nlist(nlist_check, struct xy, x, int);
-create_compare_nlist(nlist_compare, struct xy, x);
+default_checker_nlist(nlist_check, struct xy, x, int);
+default_compare_nlist(nlist_compare, struct xy, x);
+default_cleanup_nlist(nlist_cleanup);
     
 int main()
 {
@@ -22,10 +23,10 @@ int main()
   y->x = 6;
   l->x = 15;
   o->x = 25;
-  stack = new_nlist(NLIST_LIST, nlist_check, nlist_compare);
-  /* add_sorted_nlist(stack, y); */
-  /* add_sorted_nlist(stack, l); */
-  /* add_sorted_nlist(stack, z); */
+  stack = new_nlist(nlist_check, nlist_compare, nlist_cleanup);
+  add_sorted_nlist(stack, y);
+  add_sorted_nlist(stack, l);
+  add_sorted_nlist(stack, z);
   /* remove_nlist(stack, (void *) &y->x); */
   /* /\* sort_nlist(stack); *\/ */
   /* add_sorted_nlist(stack, o); */
@@ -40,7 +41,7 @@ int main()
   /* printf("%d\n", o->x); */
   while(!is_empty_nlist(stack)){
     int t;
-    t = *((int*)pop_nlist(stack));
+    t = *((int*)dequeue_nlist(stack));
     printf("%d\n", t);
   }
 

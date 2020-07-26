@@ -13,12 +13,6 @@ typedef nlist_err_t (*nlist_checker_t) (void *, void*);
 typedef nlist_err_t (*nlist_compare_t) (void *, void*);
 typedef void (*nlist_cleanup_t) (void *);
 
-enum nlist_type {
-    NLIST_LIST = 0,
-    NLIST_STACK,
-    NLIST_QUEUE,          /* not implemented yet */
-};
-
 struct nlist_node_t {
     void * data;
     struct nlist_node_t *next, *prev;
@@ -27,8 +21,7 @@ struct nlist_node_t {
 typedef struct nlist_node_t nlist_node_t;
 
 typedef struct {
-    nlist_node_t *head;
-    enum nlist_type type;
+    nlist_node_t *head, *tail;
     nlist_checker_t check;
     nlist_compare_t compare;
     nlist_cleanup_t clean;
@@ -39,14 +32,15 @@ typedef struct {
     for(pdata = (type **) &list->head->data; pdata != NULL;             \
         pdata = &get_node_nlist(pdata)->next != NULL ? (type **) &get_node_nlist(pdata)->next->data : NULL)
 
-nlist_t new_nlist(enum nlist_type, nlist_checker_t check, nlist_compare_t compare);
+nlist_t new_nlist(nlist_checker_t check, nlist_compare_t compare, nlist_cleanup_t clean);
 void add_nlist(nlist_t nlist, void *data);
 void add_sorted_nlist( nlist_t nlist, void *data);
 nlist_err_t remove_nlist(nlist_t nlist, void *value);
 void remove_node_nlist(nlist_t nlist, nlist_node_t *node);
 void *search_nlist(nlist_t nlist, void *value);
 void *pop_nlist(nlist_t nlist);
-void *peak_nlist(nlist_t nlist);
+void *peak_front_nlist(nlist_t nlist);
+void *peak_back_nlist(nlist_t nlist);
 void *dequeue_nlist(nlist_t nlist);    /* not implemented yet */
 nlist_err_t is_empty_nlist(nlist_t nlist);
 size_t get_count_nlist(nlist_t nlist);

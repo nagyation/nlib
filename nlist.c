@@ -4,7 +4,7 @@
 
 #include <stdio.h>
 
-nlist_t new_nlist(enum nlist_type type, nlist_checker_t check,
+nlist_t new_nlist(nlist_checker_t check,
                   nlist_compare_t compare, nlist_cleanup_t clean)
 {
     nlist_t list;
@@ -14,7 +14,7 @@ nlist_t new_nlist(enum nlist_type type, nlist_checker_t check,
     if (!list)
         return NULL;
     list->head = NULL;
-    list->type = type;
+    list->tail = NULL;
     list->check = check;
     list->compare = compare;
     list->clean = clean;
@@ -24,28 +24,18 @@ nlist_t new_nlist(enum nlist_type type, nlist_checker_t check,
 void add_nlist(nlist_t nlist, void *data)
 {
     nlist_node_t *item = malloc(sizeof(nlist_node_t));
+    item->data = data;
+    item->next = NULL;
     if(nlist->head == NULL) {
-        item->data = data;
         item->prev = NULL;
-        item->next = NULL;
         nlist->head = item;
+        nlist->tail = item;
         return;
     }
 
-    switch(nlist->type) {
-    case NLIST_LIST:                    /* treat list by default as stack */
-    case NLIST_STACK:
-        item->data = data;
-        item->next = nlist->head;
-        item->prev = NULL;
-        nlist->head->prev = item;
-        nlist->head = item;
-        break;
-
-    case NLIST_QUEUE:                   /* not yet implemented */
-        break;
-    }
-
+    item->prev = nlist->tail;
+    nlist->tail->next = item;
+    nlist->tail = item;
 }
 
 void __remove_node(nlist_t nlist, nlist_node_t *node)
@@ -54,10 +44,17 @@ void __remove_node(nlist_t nlist, nlist_node_t *node)
         node->prev->next = node->next;
     } else {
         nlist->head = node->next;
-        nlist->head->prev = NULL;
+        if (nlist->head)
+            nlist->head->prev = NULL;
     }
-    if (node->next)
+    
+    if (node->next) {
         node->next->prev = node->prev;
+    } else {
+        nlist->tail = node->prev;
+        if (nlist->tail)
+            nlist->tail->next = NULL;
+    }
 
     nlist->clean(node->data);
     free((void *) node);
@@ -103,29 +100,59 @@ nlist_err_t is_empty_nlist(nlist_t nlist)
     return NLIST_FALSE;
 }
 
-void *pop_nlist(nlist_t nlist)
+void *dequeue_nlist(nlist_t nlist)
 {
+    nlist_node_t *tmp;
+    void *data;
+    
     if(nlist->head == NULL)
         return NULL;
 
-    nlist_node_t *tmp;
-    void *data;
     data = nlist->head->data;
     tmp = nlist->head;
     nlist->head = nlist->head->next;
 
     if(nlist->head)
         nlist->head->prev = NULL;
+    else
+        nlist->tail = NULL;
 
     free(tmp);
     return data;
 }
 
-void *peak_nlist(nlist_t nlist)
+void *pop_nlist(nlist_t nlist)
+{
+    nlist_node_t *tmp;
+    void *data;
+    
+    if(nlist->head == NULL)
+        return NULL;
+
+    data = nlist->tail->data;
+    tmp = nlist->tail;
+    nlist->tail = nlist->tail->prev;
+    if(nlist->tail)
+        nlist->tail->next = NULL;
+    else
+        nlist->head = NULL;
+
+    free(tmp);
+    return data;
+}
+
+void *peak_front_nlist(nlist_t nlist)
 {
     if(nlist->head == NULL)
         return NULL;
     return nlist->head->data;
+}
+
+void *peak_back_nlist(nlist_t nlist)
+{
+    if(nlist->head == NULL)
+        return NULL;
+    return nlist->tail->data;
 }
 
 size_t get_count_nlist(nlist_t nlist)
@@ -161,17 +188,15 @@ void __insert_sorted_nlist(nlist_t nlist, nlist_node_t *node)
     nlist_node_t *cur;
 
     cur = nlist->head;
-    if (!nlist->head) { // nlist is empty
-        nlist->head = node;
-    }
     while (cur != NULL) {
         if (nlist->compare(cur->data, node->data) == NLIST_TRUE) {
             node->next = cur;
             node->prev = cur->prev;
+            
             if (cur->prev) // if we are in the middle
                 cur->prev->next = node;
             else // this is the head
-                nlist->head = node;
+                nlist->head = node;            
             cur->prev = node;
             return;
         }
@@ -181,6 +206,7 @@ void __insert_sorted_nlist(nlist_t nlist, nlist_node_t *node)
     // this is the largest number
     node->prev->next = node;
     node->next = NULL;
+    nlist->tail = node;
 }
 
 
@@ -192,12 +218,17 @@ void sort_nlist(nlist_t nlist)
     cur = nlist->head;
     while (cur) {
         next = cur->next;
+        
         if (cur->next)
             cur->next->prev = cur->prev;
+        else // tail
+            nlist->tail = cur->prev;
+        
         if (cur->prev)
             cur->prev->next = cur->next;
         else // the head
             nlist->head = cur->next;
+        
         __insert_sorted_nlist(nlist, cur);
         cur = next;
     }
@@ -209,8 +240,9 @@ void add_sorted_nlist(nlist_t nlist, void *data)
     item->data = data;
     item->prev = NULL;
     item->next = NULL;
-    if (!nlist->head) // if empty just insert it
+    if (!nlist->head) { // if empty just insert it
         nlist->head = item;
-    else
+        nlist->tail = item;
+    } else
         __insert_sorted_nlist(nlist, item);
 }
